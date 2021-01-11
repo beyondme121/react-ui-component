@@ -82,3 +82,5 @@ $danger: $red !default;
 $light: $gray-100 !default;
 $dark: $gray-800 !default;
 ```
+
+### 组件库样式变量分类
