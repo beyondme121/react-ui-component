@@ -272,6 +272,7 @@ export default useURLLoader;
 ```
 
 - App 调用
+  增加个 button,改变组件的状态, 重新渲染组件或者添加 deps
 
 ```ts
 import useURLLoader from "./hooks/useURLLoader";
@@ -309,4 +310,160 @@ function App() {
 }
 ```
 
-- 增加个 button,改变组件的状态, 重新渲染组件或者添加 deps
+### useRef
+
+1. 组件中唯一的引用, 不像 state 和 props 闭包的情况, 场景: 3s 后 alert 状态的值, 期间连续点击修改状态的 button, alert 的结果还是当时的值。
+   如果使用 ref, 就是唯一的引用, 修改 xxxRef.current++, 获取值也是 xxxRef.current
+2. ref 不会触发组件的更新, 而 state 和 props 的变化都会重新 render
+3. 可以获取组件或 dom 元素, 组件挂载后 input focus
+
+```ts
+import React, { useRef, useEffect, useState } from "react";
+
+const UseRefDemo: React.FC = () => {
+  const countRef = useRef(0);
+  const domRef = useRef<HTMLInputElement>(null);
+  const didMountRef = useRef(false);
+
+  // 挂载后focus
+  useEffect(() => {
+    if (domRef && domRef.current) {
+      domRef.current.focus();
+    }
+  });
+
+  // 第一次挂载init, 其他情况, 重新render current都是true
+  useEffect(() => {
+    if (didMountRef.current) {
+      console.log("updated");
+    } else {
+      console.log("init");
+      didMountRef.current = true;
+    }
+  });
+
+  // 保持组件内的唯一引用
+  const handleRef = () => {
+    setTimeout(() => {
+      console.log(countRef.current);
+    }, 3000);
+  };
+
+  // ref 不会触发组件的更新, 不会触发useEffect的执行
+  const handleRefClick = () => {
+    countRef.current += 1;
+  };
+
+  return (
+    <div>
+      ref: {countRef.current}
+      <div>
+        <input type="text" ref={domRef} />
+        <button onClick={handleRefClick}>+1 ref</button>
+        <button onClick={handleRef}>ref打印</button>
+      </div>
+    </div>
+  );
+};
+export default UseRefDemo;
+```
+
+## Context
+
+应用: 不需要通过 props 一层层向下传递
+
+- 主题的全局应用
+- 状态
+
+步骤:
+
+- 定义一个全局的 context, 在所有自组件就可以通过 useContext(...) 获得
+- 使用右键,go to type definition, 可以查看 ThemeContext 的类型定义 Context 这个接口
+
+```ts
+import React from "react";
+
+interface IThemeProps {
+  [key: string]: {
+    color: string;
+    background: string;
+  };
+}
+// 主题的配置
+export const theme: IThemeProps = {
+  light: {
+    color: "#000",
+    background: "#eee",
+  },
+  dark: {
+    color: "#fff",
+    background: "#222",
+  },
+};
+
+// 创建全局context, 以便外面使用
+export const ThemeContext = React.createContext(theme.light);
+
+interface Context<T> {
+  Provider: Provider<T>;
+  Consumer: Consumer<T>;
+  displayName?: string;
+}
+```
+
+- 在全局或者需要下层组件的外层进行包裹, 自组件或子 DOM 元素就可以通过 Consumer 获取数据
+  核心 code:
+  `<ThemeContext.Provider value={themeState}></ThemeContext.Provider>`
+
+```ts
+// 引入上下文 和 主题配置
+import { ThemeContext, theme } from "./components/Theme";
+
+function App() {
+  const [themeState, setThemeState] = useState(theme.light);
+  // 修改主题
+  const handleThemeChange = () => {
+    setThemeState(theme.dark);
+  };
+  return (
+    <ThemeContext.Provider value={themeState}>
+      <div className="App">
+        <button onClick={handleThemeChange}>主题切换</button>
+        <Hello />
+      </div>
+    </ThemeContext.Provider>
+  );
+}
+```
+
+- 使用方
+  `useContext(ThemeContext);`
+
+```ts
+import React, { useContext } from "react";
+import { ThemeContext } from "./Theme";
+interface IHelloProps {
+  message?: string;
+}
+const Hello: React.FC<IHelloProps> = (props) => {
+  const context = useContext(ThemeContext);
+  const style = {
+    color: context.color,
+    background: context.background,
+  };
+  return (
+    <div style={style}>
+      <h2>{props.message}</h2>
+    </div>
+  );
+};
+export default Hello;
+```
+
+### usehooks.com 扩展阅读
+
+`https://usehooks.com/`
+
+### 代码规范
+
+`https://segmentfault.com/a/1190000019661168?utm_source=sf-related`
