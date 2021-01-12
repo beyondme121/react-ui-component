@@ -84,3 +84,312 @@ $dark: $gray-800 !default;
 ```
 
 ### 组件库样式变量分类
+
+### normalize.css
+
+基于 normalize.css 修改自己的 styles/\_reboot.scss 文件, 变量替换等操作
+
+### 测试样式 引入其他模块
+
+- scss 的 import 语法, 如果是以\_下划线命名的文件模块, 将被认为是 partial 的, 就是使用 scss 编译的.scss 文件不会打包出新的文件.
+- 同时, import 时, 不用加下划线 只需要 @import `"variables";` 即可
+  styles/index.scss, @import 样式
+
+```scss
+// 引入变量声明  注意加分号;
+@import "variables";
+// 引入reboot
+@import "reboot";
+```
+
+### 组件中使用
+
+- src/index.tsx, 同时在其他组件中使用即可
+
+```tsx
+import "./styles/index.scss";
+```
+
+### 下载 node-sass
+
+```
+npm config set registry https://registry.npm.taobao.org/
+npm config set sass_binary_site https://npm.taobao.org/mirrors/node-sass/
+npm i node-sass -D
+```
+
+- 错误信息
+
+```
+./src/styles/index.scss (./node_modules/css-loader/dist/cjs.js??ref--5-oneOf-6-1!./node_modules/postcss-loader/src??postcss!./node_modules/resolve-url-loader??ref--5-oneOf-6-3!./node_modules/sass-loader/dist/cjs.js??ref--5-oneOf-6-4!./src/styles/index.scss)
+Error: Node Sass version 5.0.0 is incompatible with ^4.0.0.
+```
+
+```
+卸载已安装版本 npm uninstall node-sass
+安装 npm install node-sass@4.14.1
+```
+
+## Button 组件
+
+- 分类 primary, default, danger, link
+- 大小 large, small
+- 失效样式
+
+考虑以上几种分类的接口定义
+
+### 接口定义
+
+```tsx
+export enum ButtonSize {
+  Large = 'lg',
+  Small = 'sm',
+  // 普通的可以不用写?
+}
+
+export enum ButtonType {
+  Primary = 'primary',
+  Default = 'default',
+  Dange = 'danger',
+  Link = 'link'
+}
+
+// 组件props的类型
+interface BaseButtonProps {
+  className?: string,
+  disabled?: boolean,
+  size?: ButtonSize,
+  btnType?: ButtonType,
+  children: React.ReactNode,
+  href?: string
+}
+```
+
+### 组件ts实现
+```ts
+import React from 'react'
+import classNames from 'classnames'
+
+// ----------------- 定义Button组件某属性的可枚举的类型 -----------------
+export enum ButtonType {
+  Primary = 'primary',
+  Default = 'default',
+  Danger = 'danger',
+  Link = 'link'
+}
+
+export enum ButtonSize {
+  Large = 'lg',
+  Small = 'small',
+  Normal = 'normal'
+}
+
+// 定义组件接收的props的类型
+interface BaseButtonProps {
+  btnType?: ButtonType,
+  size?: ButtonSize,
+  children: React.ReactNode,
+  className?: string,
+  disabled?: boolean,
+  href?: string
+}
+
+const Button: React.FC<BaseButtonProps> = (props) => {
+  const { btnType, size, children, disabled, href } = props
+  // 定义一个变量, 给button组件添加默认的前缀 btn, 并且给组件添加样式(联合class样式)
+  // 如果object的key是变化的,可以采用[`btn-${xxx}`]: yyy的写法
+  const classes = classNames('btn', {
+    [`btn-${btnType}`]: btnType,
+    [`btn-${size}`]: size,
+    'disabled': (btnType === ButtonType.Link) && disabled  // 当属性btnType是link, 并且传入了disabled属性
+  })
+  if (btnType === ButtonType.Link && href) {
+    return (
+      <a className={classes} href={href}>{children}</a>
+    )
+  } else {
+    return (
+      <button className={classes} disabled={disabled}>{children}</button>
+    )
+  }
+}
+
+// 添加Button的默认值
+Button.defaultProps = {
+  disabled: false,
+  btnType: ButtonType.Default
+}
+
+export default Button
+```
+
+
+### 样式的需求分析
+- 文字padding的 line-height, color, 居中, cursor的变化, 
+- 属性size, 由padding，font-size 控制的
+- btnType: 由字体， 背景色, border color, hover的颜色，focus，disable颜色的变化， link-type与其他button不同, 另外一种
+
+### 样式的模块化
+1. 在_variables.scss中, 定义变量
+```css
+/**
+* 边框和阴影
+*/
+$border-width: 1px !default;
+$border-color: $gray-300 !default;
+
+// 不同类型的 box shadow
+$box-shadow-sm: 0 0.125rem 0.25rem rgba($black, 0.075) !default;
+$box-shadow: 0 0.5rem 1rem rgba($black, 0.15) !default;
+$box-shadow-lg: 0 1rem 3rem rgba($black, 0.175) !default;
+$box-shadow-inset: inset 0 1px 2px rgba($black, 0.075) !default;
+
+$border-radius: 0.25rem !default;
+$border-radius-lg: 0.3rem !default;
+$border-radius-sm: 0.2rem !default;
+/**
+ * 按钮
+ */
+$btn-font-weight: 400;
+$btn-padding-y: 0.375rem !default;
+$btn-padding-x: 0.75rem !default;
+$btn-font-family: $font-family-base !default;
+$btn-font-size: $font-size-base !default;
+$btn-line-height: $line-height-base !default;
+
+$btn-padding-y-sm: 0.25rem !default;
+$btn-padding-x-sm: 0.5rem !default;
+$btn-font-size-sm: $font-size-sm !default;
+
+$btn-padding-y-lg: 0.5rem !default;
+$btn-padding-x-lg: 1rem !default;
+$btn-font-size-lg: $font-size-lg !default;
+
+$btn-border-width: $border-width !default;
+
+$btn-box-shadow: inset 0 1px 0 rgba($white, 0.15), 0 1px 1px rgba($black, 0.075) !default;
+$btn-disabled-opacity: 0.65 !default;
+
+$btn-link-color: $link-color !default;
+$btn-link-hover-color: $link-hover-color !default;
+$btn-link-disabled-color: $gray-600 !default;
+
+$btn-border-radius: $border-radius !default;
+$btn-border-radius-sm: $border-radius-sm !default;
+$btn-border-radius-lg: $border-radius-lg !default;
+
+$btn-transition: all 0.15s ease-in-out !default;
+```
+
+### 组件button的样式(使用variables的变量声明)
+1. Button/_style.scss, SASS- 局部文件(Partial), 以下划线开头
+2. 在styles/index.scss 引入button的样式 
+```scss
+@import "../components/Button/style";
+```
+
+3. _style.scss
+添加button组件的基础样式,不涉及到btnType和size的, 变量都是从variables.scss中获取
+```scss
+.btn {
+  position: relative;
+  display: inline-block;
+  font-weight: $btn-font-weight;
+  line-height: $btn-line-height;
+  color: $body-color;
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+  background-image: none;
+  border: $btn-border-width solid transparent;
+  padding: $btn-padding-y $btn-padding-x;
+  font-size: $btn-font-size;
+  border-radius: $border-radius;
+  box-shadow: $btn-box-shadow;
+  cursor: pointer;
+  transition: $btn-transition;
+  &.disabled,
+  &[disabled] {
+    cursor: not-allowed;
+    opacity: $btn-disabled-opacity;
+    > * {
+      pointer-events: none;
+    }
+  }
+}
+```
+
+
+
+
+
+
+### 安装 classnames
+
+`npm i classnames @types/classnames`
+
+###
+
+## 测试 jest 断言库
+
+react 内置了 Jest, 直接使用 命令
+`npx jest jest.test.js --watch` 持续监控文件的变化并执行命令进行测试
+
+```js
+// create-react-app 默认添加了jest
+// npx jest jest.test.js --watch 执行测试
+```
+
+```js
+test("test common matcher", () => {
+  expect(2 + 2).toBe(4);
+  expect(2 + 2).not.toBe(5);
+});
+
+test("test to be true or false", () => {
+  expect(1).toBeTruthy();
+  expect(0).toBeFalsy();
+});
+
+test("test number", () => {
+  expect(4).toBeGreaterThan(3);
+  expect(2).toBeLessThan(3);
+});
+
+test("test object", () => {
+  // expect({ name: "sanfeng" }).toBe({ name: "sanfeng" });  // toBe是完全相同, 比较对象的值是否相同使用 toEqual
+  expect({ name: "hello" }).toEqual({ name: "hello" });
+});
+```
+
+```text
+npx jest jest.test.js --watch
+Watch Usage: Press w to show more.
+ PASS  ./jest.test.js
+  √ test common matcher (1 ms)
+  √ test to be true or false (1 ms)
+  √ test number (3 ms)
+  √ test object (1 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       4 passed, 4 total
+Snapshots:   0 total
+Time:        0.508 s, estimated 1 s
+Ran all test suites matching /jest.test.js/i.
+
+Watch Usage: Press w to show more.
+```
+
+## react 测试工具 React Testing Library
+
+package.json 中 工具是大于 3.3.0 版本的并且使用 create-react-app 脚手架官方推荐的 react 组件测试工具 jest-dom
+"react-scripts": "4.0.1",
+"@testing-library/jest-dom": "^5.11.4",
+
+- 添加测试用例 components/Button/button.test.tsx
+
+- button.test.tsx, 执行 npm run test
+
+```tsx
+
+```
