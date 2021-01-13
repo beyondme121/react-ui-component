@@ -391,5 +391,35 @@ package.json 中 工具是大于 3.3.0 版本的并且使用 create-react-app �
 - button.test.tsx, 执行 npm run test
 
 ```tsx
+import React from 'react'
+import { render } from '@testing-library/react'
+import Button from './button'
 
+test("our first react test", () => {
+  const wrapper = render(<Button>Nice</Button>)
+  const element = wrapper.queryByText('Nice')
+  expect(element).toBeTruthy()
+})
 ```
+
+
+### jest-dom
+- 新建setupTests.ts 启动时, 在每次运行npm run test时, react-scirpt会先运行setupTest.ts文件, 用于全局通用的配置
+- 测试文件就会多出一些方法
+**setupTests.ts**
+```ts
+import "@testing-library/jest-dom/extend-expect";
+```
+
+```ts
+test("our first react test", () => {
+  // const wrapper = render(<Button>Nice</Button>)
+  // const element = wrapper.queryByText('Nice')
+  // expect(element).toBeTruthy()
+  // 断言元素是否出现在文档中
+  expect(element).toBeInTheDocument()
+})
+```
+
+#### 为Button组件添加测试用例的流程
+1. 组件的cases进行分类再一个个书写 describe
