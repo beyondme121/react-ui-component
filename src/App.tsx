@@ -4,6 +4,10 @@ function App() {
   return (
     <div>
       <Button disabled>hello</Button>
+      <Button onClick={e => console.log(e)} className="custom">CLICK</Button>
+      <Button href="http://www.baidu.com" btnType={ButtonType.Link} target="_blank">hello</Button>
+      <Button btnType={ButtonType.Danger} size={ButtonSize.Large}>hello</Button>
+      <Button btnType={ButtonType.Default} size={ButtonSize.Small}>world</Button>
       <Button btnType={ButtonType.Primary} size={ButtonSize.Large}>hello</Button>
       <Button btnType={ButtonType.Link} href="http://www.baidu.com">baidu</Button>
     </div>
