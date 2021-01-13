@@ -722,3 +722,434 @@ describe('test Button component', () => {
 })
 ```
 
+
+
+## 2. Menu组件
+
+组件分析
+
+1. 分析模式 vertical horizatal, 激活index
+2. 激活index，高亮，有disabled, 下拉菜单 水平的有折叠隐藏
+3. 有状态修改, 父子组件传值 useState useContext等
+
+![](C:\Users\CNZHLIU14\AppData\Roaming\Typora\typora-user-images\image-20210113133324804.png)
+
+<img src="C:\Users\CNZHLIU14\AppData\Roaming\Typora\typora-user-images\image-20210113133511999.png"/>
+
+<img src="C:\Users\CNZHLIU14\AppData\Roaming\Typora\typora-user-images\image-20210113134116068.png" alt="image-20210113134116068" style="zoom:80%;" />
+
+<img src="C:\Users\CNZHLIU14\AppData\Roaming\Typora\typora-user-images\image-20210113134147624.png" alt="image-20210113134147624" style="zoom:80%;" />	
+
+
+
+Menu组件
+
+```ts
+import React, { Children } from 'react'
+import classNames from 'classnames'
+
+type MenuMode = 'vertical' | 'horizontal'
+export interface MenuProps {
+  defaultIndex?: number,
+  className?: string,
+  mode?: MenuMode,
+  style?: React.CSSProperties,
+  onSelect?: (selectedIndex: number) => void
+}
+
+const Menu: React.FC<MenuProps> = props => {
+  const { defaultIndex, className, mode, style, onSelect, children } = props
+  const classes = classNames('menu', className, {
+    'menu-vertical': mode === 'vertical'
+  })
+  return (
+    <ul className={classes} style={style}>
+      {children}
+    </ul>
+  )
+}
+Menu.defaultProps = {
+  defaultIndex: 0,
+  mode: 'vertical'
+}
+export default Menu
+```
+
+
+
+MenuItem
+
+```ts
+import React from 'react'
+import classNames from 'classnames'
+
+/**
+ * index: item的索引
+ */
+export interface MenuItemProps {
+  index?: number,
+  disabled?: boolean,
+  className?: string,
+  style?: React.CSSProperties
+}
+
+const MenuItem: React.FC<MenuItemProps> = props => {
+  const { index, disabled, className, style, children } = props
+  const classes = classNames('menu-item', className, {
+    'is-disabled': disabled,
+    // 应该还有一个is-active, 是否被激活, 应该由父组件传递过来
+  })
+  return (
+    <li className={classes} style={style}>
+      {children}
+    </li>
+  )
+
+}
+
+export default MenuItem
+```
+
+
+
+### 2. 问题
+
+1. Menu Item 组件不知道 Menu组件当前active的是哪一项，只有知道这个值才能高亮哪一个item
+2. 不知道onSelect 的函数作为父组件的处理函数，怎样传递给子组件 Menu Item 进行处理
+3. React数据流从上到下，父组件如何把数据传递给子组件
+
+
+
+### 3. 只有children时透传值
+
+遇到的问题: 需要把一些父组件的值传递给子组件, 比如当前激活的index, onSelect函数
+
+但是menu这个父组件中的子组件部分是 {children}，这个通过props的方式就没法传递了
+
+Context: 透传属性的好帮手
+
+```tsx
+<ul className={classes} style={style}>
+    {children}
+</ul>
+```
+
+
+
+1. 定义context的接口(优化onSelect的类型定义 类型别名 type XXX = ...)
+
+2. 创建context 并导出, 供使用处使用
+
+3. 因为用户点击某一个item, 就会修改当前的activeIndex, 
+
+   所以父组件中需要state `**const** [currentActive, setActive] = useState(defaultIndex)`
+
+4. 创建传递给子组件的context. 
+
+   1. currentActive：当前激活的index
+   2. onSelect??:是否把Menu上的onSelect直接传递给MenuItem呢? 其实在父组件中需要做2件事
+      1. 除了调用onSelect之外, 用户定义的回调
+      2. 点击item时，对应的active要进行变化 即更新状态
+
+
+
+
+
+
+
+### 4. 第一版本实现
+
+```ts
+import React, { createContext, useState } from 'react'
+import classNames from 'classnames'
+
+type MenuMode = 'vertical' | 'horizontal'
+type SelectCallback = (selectedIndex: number) => void
+
+// 1. 
+export interface MenuProps {
+  defaultIndex?: number,
+  className?: string,
+  mode?: MenuMode,
+  style?: React.CSSProperties,
+  onSelect?: SelectCallback
+}
+
+// 通过使用context, 将父组件传递给子组件的属性的接口定义
+interface IMenuContext {
+  index: number,
+  onSelect?: SelectCallback
+}
+
+export const MenuContext = createContext<IMenuContext>({ index: 0 })
+
+const Menu: React.FC<MenuProps> = props => {
+  const { defaultIndex, className, mode, style, onSelect, children } = props
+  const [currentActive, setActive] = useState(defaultIndex)
+  const classes = classNames('ux-menu', className, {
+    'menu-vertical': mode === 'vertical'
+  })
+
+  const handleSelect = (index: number) => {
+    // 1. 额外的操作: 更新currentIndex的所以, 以便通知子组件最新的index是多少
+    setActive(index)
+    if (onSelect) {
+      // 执行用户自定义回调
+      onSelect(index)
+    }
+  }
+  // 创建context需要的值
+  const contextValue: IMenuContext = {
+    index: currentActive ? currentActive : 0,
+    onSelect: handleSelect
+  }
+  return (
+    <ul className={classes} style={style}>
+      <MenuContext.Provider value={contextValue}>
+        {children}
+      </MenuContext.Provider>
+    </ul>
+  )
+}
+Menu.defaultProps = {
+  defaultIndex: 0,
+  mode: 'vertical'
+}
+export default Menu
+```
+
+
+
+- MenuItem
+
+```ts
+import React, { useContext } from 'react'
+import classNames from 'classnames'
+import { MenuContext } from './menu'
+/**
+ * index: item的索引
+ */
+export interface MenuItemProps {
+  index: number,
+  disabled?: boolean,
+  className?: string,
+  style?: React.CSSProperties
+}
+
+const MenuItem: React.FC<MenuItemProps> = props => {
+  const { index, disabled, className, style, children } = props
+  const context = useContext(MenuContext)
+  const classes = classNames('menu-item', className, {
+    'is-disabled': disabled,
+    // 应该还有一个is-active, 是否被激活, 应该由父组件传递过来
+    'is-active': index === context.index
+  })
+  // 定义什么情况下子组件调用父组件的方法
+  const handleClick = () => {
+    if (context.onSelect && !disabled) {
+      // 调用父组件(context中的方法, 把自身上的props传递给父组件 <MenuItem index={1}>hello</MenuItem>)
+      // 将组件自身的属性index 传递给了父组件的onSelect函数, 这个函数接受一个number类型的值, 就是item的索引index
+      // 父组件更新activeIndex, 并执行用户自定义回调onSelect函数
+      context.onSelect(index)
+    }
+  }
+  return (
+    <li className={classes} style={style} onClick={handleClick}>
+      {children}
+    </li>
+  )
+}
+
+export default MenuItem
+```
+
+
+
+```ts
+// App.tsx
+import React from 'react';
+import Button, { ButtonType, ButtonSize } from './components/Button/button'
+import Menu from './components/Menu/menu'
+import MenuItem from './components/Menu/menuItem'
+
+function App() {
+  return (
+    <div>
+      <Menu onSelect={(index) => console.log(index)} mode="vertical">
+        <MenuItem index={0}>
+          hello
+        </MenuItem>
+        <MenuItem index={2} disabled>
+          disabled
+        </MenuItem>
+        <MenuItem index={1}>
+          world
+        </MenuItem>
+      </Menu>
+    </div>
+  );
+}
+
+export default App;
+
+```
+
+
+
+### 5. 父子组件传递index和函数的数据流
+
+1. Menu给Menu Item传递当前激活的index, 目的是Item可以通过自身的props的index，来判断哪个item和activeIndex相等,然后设置className.
+
+2. 传递一个callback, 在子组件上调用, 把被点击的item的index传递出来到父组件, 然后父组件做两件事
+   1. 修改当前的activeIndex
+   2. 执行onSelect用户自定义函数
+
+
+
+### 6. 第一版不足
+
+1. 使用MenuItem都必须传递index属性
+2. Menu组件的子元素可以传递任何元素, 我只希望传递MenuItem组件，如果添加别的元素，给出警告
+
+
+
+### 7. 添加Menu的样式
+
+> [A Complete Guide to Flexbox | CSS-Tricks (css-tricks.com)](https://css-tricks.com/snippets/css/a-guide-to-flexbox/)
+
+#### 1. 基本样式
+
+```css
+.ux-menu {
+  display: flex;
+  flex-wrap: wrap;
+  padding-left: 0;
+  margin-bottom: 1rem;
+  list-style: none;
+  border-bottom: $menu-border-width solid $menu-border-color;
+  box-shadow: $menu-box-shadow;
+  > .menu-item {
+    padding: $menu-item-padding-y $menu-item-padding-x;
+    cursor: pointer;
+    transition: $menu-transition;
+    &:hover,
+    &:focus {
+      text-decoration: none;
+    }
+    &.is-disabled {
+      color: $menu-item-disabled-color;
+      pointer-events: none;
+      cursor: default;
+    }
+    &.is-active,
+    &:hover {
+      color: $menu-item-active-color;
+      border-bottom: $menu-item-active-border-width solid
+        $menu-item-active-color;
+    }
+  }
+}
+```
+
+#### 2. 垂直
+
+```scss
+.menu-vertical {
+  flex-direction: column;
+  border-bottom: 0px;
+  margin: 10px 20px;
+  border-right: $menu-border-width solid $menu-border-color;
+  .menu-item {
+    border-left: $menu-item-active-border-width solid transparent;
+    &.is-active,
+    &:hover {
+      border-bottom: 0;
+      border-left: $menu-item-active-border-width solid $menu-item-active-color;
+    }
+  }
+}
+```
+
+
+
+#### 3. 水平
+
+
+
+
+
+### 8. 测试
+
+1. 测试提供默认属性，会不会显示正确的class和行为
+
+
+
+#### 1.  测试用例分类
+
+```tsx
+import React from 'react'
+import { render } from '@testing-library/react'
+
+describe('test Menu and MenuItem component', () => {
+  it('1. 给定默认的参数渲染正确的Menu和Item', () => {
+
+  })
+  it('2. 点击item切换激活index 并且 调用正确的回调函数', () => {
+
+  })
+  it('veritcal模式渲染正确的class', () => {
+
+  })
+})
+```
+
+
+
+#### 2. 引入组件和设置props
+
+```tsx
+import Menu, { MenuProps } from './menu'
+import MenuItem, { MenuItemProps } from './menuItem'
+
+const testProps: MenuProps = {
+  defaultIndex: 0,
+  onSelect: jest.fn()
+}
+const testVerticalProps: MenuProps = {
+  defaultIndex: 0,
+  mode: 'vertical'
+}
+```
+
+#### 3. 定义测试组件
+
+```tsx
+const genMenu = (props: MenuProps) => {
+  return (
+    <Menu {...props}>
+      <MenuItem index={0}>
+        active
+     </MenuItem>
+      <MenuItem index={1} disabled>
+        disabled
+     </MenuItem>
+      <MenuItem index={2}>
+        xyz
+     </MenuItem>
+    </Menu>
+  )
+}
+```
+
+
+
+#### 4. 定义通用的测试内容
+
+beforeEach()钩子
+
+react-testing-library的测试理念, 测试用例越贴近用户的使用方法, 测试结果就会给你越大的信心
+
+所以api通常是通过渲染元素的内容来取得这个节点，而不是通过通过class或者id
+
+- menu组件中添加data-testid="test-menu",
+
