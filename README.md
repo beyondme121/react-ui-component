@@ -1,3 +1,7 @@
+[TOC]
+
+
+
 ## 组件库笔记
 
 ## 代码结构和代码检查
@@ -285,9 +289,12 @@ $btn-transition: all 0.15s ease-in-out !default;
 ```
 
 ### 组件button的样式
+
+#### 1. 基础样式
+
 1. 使用variables的变量声明
 2. Button/_style.scss, SASS- 局部文件(Partial), 以下划线开头
-3. 在styles/index.scss 引入button的样式 
+3. 在styles/index.scss 引入button的样式 , **index.scss本身在index.tsx被引入**
 ```scss
 @import "../components/Button/style";
 ```
@@ -322,9 +329,9 @@ $btn-transition: all 0.15s ease-in-out !default;
 }
 ```
 
-#### 添加特殊样式Type Size
-这两个属性中, 属性的设置都是类似的, 我们可以使用sass中的mixin, 解决css的重用问题
-1. styles/_mixin.scss
+#### 2. 特殊样式Type & Size
+这两个属性中, **属性的设置都是类似的**, 我们可以使用sass中的**mixin**, 解决css的重用问题
+1. src/styles/_mixin.scss
 2. index.scss引入 `@import "mixin";`
 3. 定义button 的 mixin 
 ```scss
@@ -335,7 +342,7 @@ $btn-transition: all 0.15s ease-in-out !default;
   border-radius: $border-radius;
 }
 ```
-4. 在button的内部模块样式中应用 @include
+4. 在button的内部模块样式中使用 @include
 ```scss
 @include button-size($btn-padding-y, $btn-padding-x, $btn-font-size, $border-radius);
 ```
@@ -379,7 +386,7 @@ border-radius: $border-radius;
 }
 ```
 
-6. 回到组件中的样式
+6. src/component/button/_style.scss, 回到组件中的样式
 ```scss
 
 .btn-lg {
@@ -439,15 +446,15 @@ border-radius: $border-radius;
 }
 ```
 
+#### 3. 添加元素固有属性和方法
 
-#### 精益求精
 - Button接收的props是写死的, 并没有a和button元素自身native应该有的属性, 比如onClick属性都没有 并且直接添加onClick会报错
 - 原生的a和button太多了，一个个加是不行的
 
 解决思路
-> 1. 定义一个类型别名, NativeButtonProps, 依据React提供的Button的类型, 传递泛型规定的类型HTMLElement
+> 1. 定义一个类型别名, NativeButtonProps, **依据React提供的Button的类型,** 传递泛型规定的类型HTMLElement
 > 2. 使用交叉类型[ & ], 把button自身的属性 和 自定义的属性 进行合并{就是merge}, 不能使用联合类型 [ | ],联合类型是a或者b的类型
-> 3. 将必选的类型 变成可选的 Partial, 全局的utility type
+> 3. 将必选的类型 变成可选的 Partial, ts的全局的utility type
 
 ```tsx
 // 元素原生的属性
@@ -459,7 +466,7 @@ type AnchorButtonProps = React.AnchorHTMLAttributes<HTMLElement> & BaseButtonPro
 export type ButtonProps = Partial<NativeButtonProps & AnchorButtonProps>
 ```
 
-#### Button组件最终
+#### 4. Button组件最终
 ```tsx
 import React from 'react'
 import classNames from 'classnames'
@@ -530,8 +537,6 @@ export default Button
 
 
 
-
-
 ## 测试 jest 断言库
 
 react 内置了 Jest, 直接使用 命令
@@ -582,7 +587,9 @@ Ran all test suites matching /jest.test.js/i.
 Watch Usage: Press w to show more.
 ```
 
-## react 测试工具 React Testing Library
+
+
+## React 测试工具 React Testing Library
 
 package.json 中 工具是大于 3.3.0 版本的并且使用 create-react-app 脚手架官方推荐的 react 组件测试工具 jest-dom
 "react-scripts": "4.0.1",
@@ -605,10 +612,11 @@ test("our first react test", () => {
 ```
 
 
-### jest-dom
+## jest-dom
 - 新建setupTests.ts 启动时, 在每次运行npm run test时, react-scirpt会先运行setupTest.ts文件, 用于全局通用的配置
-- 测试文件就会多出一些方法
-**setupTests.ts**
+- 测试文件就会多出一些方法,针对dom的测试
+- create-react-app 高版本自带
+- **当运行npm run test时, 在每次测试前的通用配置放在setupTests.ts这个文件**
 ```ts
 import "@testing-library/jest-dom/extend-expect";
 ```
@@ -618,10 +626,99 @@ test("our first react test", () => {
   // const wrapper = render(<Button>Nice</Button>)
   // const element = wrapper.queryByText('Nice')
   // expect(element).toBeTruthy()
-  // 断言元素是否出现在文档中
+  // 断言判断元素是否出现在文档中
   expect(element).toBeInTheDocument()
 })
 ```
 
-#### 为Button组件添加测试用例的流程
-1. 组件的cases进行分类再一个个书写 describe
+### Button组件测试用例
+
+1. 构思组件测试用例有哪些，然后进行分类，最后再一个个书写 describe
+
+```bash
+1. 检测普通功能, 是否加载到文档, 是否是button标签, class是否加上了, 按钮是否可点击
+2. 检查特殊属性: type, size, 自定义的className的设置
+3. 检查是a链接的情况, tagName是否是A, 因为button组件创建时要求btn-type='btn-link' && 有href属性才创建a链接
+```
+
+
+
+```ts
+import React from 'react'
+import '@testing-library/jest-dom'
+import { render, fireEvent } from '@testing-library/react'
+import Button, { ButtonProps, ButtonSize, ButtonType } from './button'// 从组件中引入type 类型
+
+const defaultProps = {
+  onClick: jest.fn()
+}
+// 定义特殊类型属性
+const specialProps = {
+  btnType: ButtonType.Primary,
+  size: ButtonSize.Large,
+  className: 'demo'
+}
+// disable的属性
+const disabledProps = {
+  disabled: true,
+  onClick: jest.fn()
+}
+// 对button组件进行分类
+describe('test Button component', () => {
+  /**
+   * 1. 应该渲染一个button: 拿到的elment就是一个dom元素, 通过tagName判断
+   * 2. 测试组件上有没有className
+   * 3. 测试按钮的事件
+   */
+  it('should render the corrent default button', () => {
+    const wrapper = render(<Button {...defaultProps}>Nice</Button>)
+    // queryByText('Nice') => HTMLElement | null 
+    // element.tagName: 会报错, 因为element返回的类型是union type, 联合类型，可能是null, 所以不能调用上面的属性了
+    const element = wrapper.getByText('Nice')
+    // 1. 判断组件在文档中
+    expect(element).toBeInTheDocument()
+    // 2. 渲染的是一个button
+    expect(element.tagName).toEqual('BUTTON')
+    // @ts-ignore
+    expect(element.disabled).toBeFalsy()
+    expect(element).toHaveClass('btn btn-default')
+    // 3. 判断组件上是否有onClick事件
+    // 对元素进行点击
+    fireEvent.click(element)
+    expect(defaultProps.onClick).toHaveBeenCalled()
+    // 4. 自定义属性校验
+    // expect(element.disabled).toBeFalsy()
+  })
+  // 测试特殊属性 type size ...
+  it('should render the correct component based on different props', () => {
+    const wrapper = render(<Button {...specialProps}>特殊属性</Button>)
+    const element = wrapper.getByText('特殊属性')
+    expect(element).toBeInTheDocument()
+    expect(element).toHaveClass('btn-primary btn-lg demo')
+  })
+
+  // 测试 button的type是a 并且提供href 
+  it('should render a link when btnType equals link and href is provided', () => {
+    const wrapper = render(
+      <Button btnType={ButtonType.Link} href="https://www.baidu.com">Link</Button>
+    )
+    let ele = wrapper.getByText('Link')
+    expect(ele).toBeInTheDocument()
+    expect(ele.tagName).toEqual('A')
+    expect(ele).toHaveClass('btn btn-link')
+    expect(ele).toHaveAttribute('href')
+  })
+
+  // 测试disabled属性
+  it('should render disabled button when disabled set to true', () => {
+    const wrapper = render(<Button {...disabledProps}>disabled</Button>)
+    const ele = wrapper.getByText('disabled')
+    expect(ele).toBeInTheDocument()
+    // @ts-ignore    注释会忽略下一行中产生的所有错误
+    expect(ele.disabled).toBeTruthy()
+    fireEvent.click(ele)
+    expect(disabledProps.onClick).not.toHaveBeenCalled()
+  })
+})
+```
+
