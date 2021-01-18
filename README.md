@@ -1153,3 +1153,565 @@ react-testing-library的测试理念, 测试用例越贴近用户的使用方法
 
 - menu组件中添加data-testid="test-menu",
 
+
+
+```ts
+import React from 'react'
+import '@testing-library/jest-dom'
+import { fireEvent, render, RenderResult, cleanup } from '@testing-library/react'
+
+import Menu, { MenuProps } from './menu'
+import MenuItem, { MenuItemProps } from './menuItem'
+
+const testProps: MenuProps = {
+  defaultIndex: 0,
+  onSelect: jest.fn(),
+  className: 'test'  // 自定义的class
+}
+const testVerticalProps: MenuProps = {
+  defaultIndex: 0,
+  mode: 'vertical',
+}
+// 定义测试组件
+const genMenu = (props: MenuProps) => {
+  return (
+    <Menu {...props}>
+      <MenuItem index={0}>active</MenuItem>
+      <MenuItem index={1} disabled>
+        disabled
+      </MenuItem>
+      <MenuItem index={100}>xyz</MenuItem>
+    </Menu>
+  )
+}
+
+// 定义通用变量的类型,否则返回值会丧失类型 如render(genMenu(testProps)) => any
+let wrapper: RenderResult,
+  menuElement: HTMLElement,
+  activeElement: HTMLElement,
+  disabledElement: HTMLElement
+describe('test Menu and MenuItem component', () => {
+
+  // 每个case开始前都会调用
+  beforeEach(() => {
+    wrapper = render(genMenu(testProps))
+    menuElement = wrapper.getByTestId('test-menu')
+    // wrapper.container.getElementsByClassName('...') 也可以
+    activeElement = wrapper.getByText('active')
+    disabledElement = wrapper.getByText('disabled')
+  })
+
+  it('1. 给定默认的参数渲染正确的Menu和Item', () => {
+    // 1. 检测在document中
+    expect(menuElement).toBeInTheDocument()
+    // 2. 有对应的class
+    expect(menuElement).toHaveClass('ux-menu test')
+    // 3. 检测渲染的li的数量是3个
+    expect(menuElement.getElementsByTagName('li').length).toEqual(3)
+    // 4. index=0的class默认添加is-active的
+    expect(activeElement).toHaveClass('menu-item is-active')
+    // 5. disabled
+    expect(disabledElement).toHaveClass('menu-item is-disabled')
+
+  })
+
+  it('2. 点击item切换激活index 并且 调用正确的回调函数', () => {
+    const thirdItem = wrapper.getByText('xyz')
+    fireEvent.click(thirdItem)
+    // 被点击的item, 自身元素应该被添加is-active类
+    expect(thirdItem).toHaveClass('is-active')
+    // 点击切换后, 原来的active的元素就应该没有了is-active类
+    expect(activeElement).not.toHaveClass('is-active')
+    // 点击第三个item, Menu组件的onSelect回调应该被调用, 并且第三个item的index是100, 因为元素props设置的就是100
+    expect(testProps.onSelect).toHaveBeenCalledWith(100)
+    // 测试disabled element, 点击后, 样式没有is-active, onSelect回调没有被调用
+    fireEvent.click(disabledElement)
+    expect(disabledElement).not.toHaveClass('is-active')
+    expect(testProps.onSelect).not.toHaveBeenCalledWith(1)
+  })
+
+  it('3. veritcal模式渲染正确的class', () => {
+    cleanup()
+    const wrapper = render(genMenu(testVerticalProps))
+    const ele = wrapper.getByTestId('test-menu')
+    expect(ele).toHaveClass('menu-vertical')
+  })
+})
+```
+
+在测试"veritcal模式渲染正确的class"时报错，因为会找到多个test-menu这个元素呢? 
+
+因为在beforeEach这个钩子中渲染了一次,render, test case又渲染了一次,所以要手动清楚cleanup
+
+```
+test Menu and MenuItem component › veritcal模式渲染正确的class
+   TestingLibraryElementError: Found multiple elements by: [data-testid="test-menu"]
+```
+
+那么为什么第二次的it测试,没有报错呢? 没有多个元素呢? 是因为testing library默认在it的最后默认调用cleanup!!!
+
+
+
+###  9. 进一步增强Menu组件
+
+#### 1.限制子组件的类型只能是MenuItem
+
+现在是父组件一股脑的使用了children，增强是我们希望获得某种操控children的能力。想到在children上调用map方法进行增强。
+
+直接在children上使用map是十分危险的事情。react文档上说，children是一个不透明的数据结构，可以是任意类型。可以是个数组，函数，对象等等。
+
+那么如果是函数，直接在函数上调用map方法就会报错了。为了解决这个问题，react推出了2个帮助方法可以轻松的循环children
+
+React.Children.map, React.Children.forEach.  如果children中有一些不符合规则的类型, 帮助方法就可以跳过这些类型
+
+
+
+- 首先给MenuItem添加一个displayName，这个是react内置的静态属性，帮助我们判断类型
+- 在父组件中Menu, 通过循环children, 拿出每一个child，就可以判断了
+
+> MenuItem
+
+```tsx
+MenuItem.displayName = 'MenuItem'
+```
+
+
+
+>  Menu组件
+
+```tsx
+const renderChildren = () => {
+    return React.Children.map(children, (child, index) => {
+      const childElement = child as React.FunctionComponentElement<MenuItemProps>
+      // childElement.type.displayName
+      const { displayName } = childElement.type
+      if (displayName === 'MenuItem') {
+        return child
+      } else {
+        console.error('Warning: Menu has a child which is not a MenuItem component')
+      }
+    })
+}
+```
+
+> 测试, 增加一个li元素, 测试结果通过, 但是因为有li元素会warning
+
+```tsx
+// 定义测试组件
+const genMenu = (props: MenuProps) => {
+  return (
+    <Menu {...props}>
+      <li>hello</li>
+    </Menu>
+  )
+}
+```
+
+
+
+#### 2. 自动添加index属性
+
+如果能把某个属性混入到这个实例child中。React.cloneElement帮助方法
+
+```tsx
+if (displayName === 'MenuItem') {
+    return React.cloneElement(childElement, {
+    index
+    })
+} else {
+	console.error('Warning: Menu has a child which is not a MenuItem component')
+}
+```
+
+修改MenuItem的props的index为可选的
+
+```tsx
+export interface MenuItemProps {
+  index?: number,
+  disabled?: boolean,
+  className?: string,
+  style?: React.CSSProperties
+}
+```
+
+```tsx
+// 修改自组件, 此时index不是必须传的, 当有index并且为number才出发点击, 调用父类的函数,将index传递回父组件
+const handleClick = () => {
+    if (context.onSelect && !disabled && typeof index === 'number') {
+      // 调用父组件(context中的方法, 把自身上的props传递给父组件 <MenuItem index={1}>hello</MenuItem>)
+      // 将组件自身的属性index 传递给了父组件的onSelect函数, 这个函数接受一个number类型的值, 就是item的索引index
+      // 父组件更新activeIndex, 并执行用户自定义回调onSelect函数
+      context.onSelect(index)
+    }
+}
+```
+
+
+
+
+
+### 10.下拉菜单SubMenu
+
+#### 1. 增加下拉菜单的节点
+
+```
+<Menu.SubMenu>
+...
+</Menu.SubMenu>
+```
+
+1. 样式
+2. 将下拉的内容全部显示出来
+3. ...
+
+```tsx
+import React, { useContext, FunctionComponent, FunctionComponentElement } from 'react'
+import classNames from 'classnames'
+import { MenuContext } from './menu'   // 父组件的上下文
+// 7. 引入MenuItem的接口props类型定义
+import { MenuItemProps } from './menuItem'
+
+// 1. 定义自身组件的属性以及类型
+export interface SubMenuProps {
+  index?: number,
+  title: string,
+  className?: string
+}
+
+const SubMenu: React.FC<SubMenuProps> = (props) => {
+  // 2. 解构所有接收的参数
+  const { index, title, className, children } = props
+  // 3. 引入上下文,拿到父组件中的值
+  const context = useContext(MenuContext)
+  // 4. 整合class样式
+  const classes = classNames('menu-item submenu-item', className, {
+    'is-active': context.activeIndex === index
+  })
+
+  // 6. 处理渲染的下拉内容
+  const renderChildren = () => {
+    const childrenComponent = React.Children.map(children, (child, i) => {
+      const childElement = child as FunctionComponentElement<MenuItemProps>
+      if (childElement.type.displayName === 'MenuItem') {
+        return child
+      } else {
+        console.error('Warning: Menu has a child which is not a MenuItem component')
+      }
+    })
+    return (
+      <ul className="ux-submenu">
+        {childrenComponent}
+      </ul>
+    )
+  }
+
+  // 5. 渲染DOM (li包裹着div作为标题)
+  return (
+    <li key={index} className={classes}>
+      <div className="submenu-title">
+        {title}
+      </div>
+      {/* 下来菜单内容,依然不能使用children直接渲染submenu中的内容,因为依然要限制只有MenuItem, 使用renderChildren函数 */}
+      {/* 8. 将处理好的children加入到组件中 */}
+      {renderChildren()}
+    </li>
+  )
+}
+
+// 9. 增加displayName
+SubMenu.displayName = "SubMenu"
+export default SubMenu
+
+// 10. 到App进行编写测试代码
+// 11. 修改menu组件, 发现渲染renderChildren时没有显示下来菜单,  Menu组件中除了可以是MenuItem,还可以有SubMenu
+```
+
+
+
+App.tsx
+
+```tsx
+import React from 'react';
+import Button, { ButtonType, ButtonSize } from './components/Button/button'
+import Menu from './components/Menu/menu'
+import MenuItem from './components/Menu/menuItem'
+import SubMenu from './components/Menu/subMenu'
+function App() {
+  return (
+    <div>
+      <Menu onSelect={(index) => console.log(index)} mode="vertical">
+        <MenuItem >
+          hello
+        </MenuItem>
+        <MenuItem disabled>
+          disabled
+        </MenuItem>
+        <MenuItem >
+          world
+        </MenuItem>
+        <SubMenu title="dropdown">
+          <MenuItem>
+            产品
+          </MenuItem>
+          <MenuItem >
+            区域
+          </MenuItem>
+        </SubMenu>
+      </Menu>
+    </div>
+  );
+}
+export default App;
+```
+
+
+
+#### 2. 增加打开关闭功能
+
+1. 设置display:none
+
+```css
+// _style.scss
+.ux-submenu {
+	display: none
+}
+```
+
+2. 通过点击或者hover事件,给组件添加class, open,open样式为display: block; 添加open类. 增加state
+
+```css
+  .ux-submenu {
+    // ...
+  }
+  // 增加显示的类
+  .ux-submenu.menu-opened {
+    display: block;
+  }
+```
+
+
+
+**subMenu.tsx实现, 从第12步骤开始**
+
+```tsx
+import React, { useContext, useState, FunctionComponentElement } from 'react'
+import classNames from 'classnames'
+import { MenuContext } from './menu'   // 父组件的上下文
+// 7. 引入MenuItem的接口props类型定义
+import { MenuItemProps } from './menuItem'
+
+
+// 1. 定义自身组件的属性以及类型
+export interface SubMenuProps {
+  index?: number,
+  title: string,
+  className?: string
+}
+
+const SubMenu: React.FC<SubMenuProps> = (props) => {
+  // 2. 解构所有接收的参数
+  const { index, title, className, children } = props
+  // 3. 引入上下文,拿到父组件中的值
+  const context = useContext(MenuContext)
+  // 12. 添加submenu是否打开的状态, 通过事件修改状态, 影响下拉菜单的展开或隐藏
+  const [menuOpen, setMenuOpen] = useState(false)
+  // 4. 整合class样式
+  const classes = classNames('menu-item submenu-item', className, {
+    'is-active': context.activeIndex === index
+  })
+
+  // 13. 添加submenu的class, 这里的e的类型是React.MouseEvent
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setMenuOpen(!menuOpen)
+  }
+
+  // 6. 处理渲染的下拉内容
+  const renderChildren = () => {
+    // 14. 增加下拉菜单显示与隐藏的类, 不能写死ux-submenu, 根据状态值的true or false 添加open状态
+    const subMenuClasses = classNames('ux-submenu', {
+      'menu-opened': menuOpen
+    })
+    const childrenComponent = React.Children.map(children, (child, i) => {
+      const childElement = child as FunctionComponentElement<MenuItemProps>
+      if (childElement.type.displayName === 'MenuItem') {
+        return child
+      } else {
+        console.error('Warning: Menu has a child which is not a MenuItem component')
+      }
+    })
+    return (
+      // 15. 替换掉写死的 ux-submenu => subMenuClasses
+      <ul className={subMenuClasses}>
+        {childrenComponent}
+      </ul>
+    )
+  }
+
+  // 5. 渲染DOM (li包裹着div作为标题)
+  return (
+    <li key={index} className={classes}>
+      {/* 16. div这个地方添加click事件, 触发显示或隐藏的事件 */}
+      <div className="submenu-title" onClick={handleClick}>
+        {title}
+      </div>
+      {/* 下来菜单内容,依然不能使用children直接渲染submenu中的内容,因为依然要限制只有MenuItem, 使用renderChildren函数 */}
+      {/* 8. 将处理好的children加入到组件中 */}
+      {renderChildren()}
+    </li>
+  )
+}
+
+// 9. 增加displayName
+SubMenu.displayName = "SubMenu"
+export default SubMenu
+
+// 10. 到App进行编写测试代码
+// 11. 修改menu组件, 发现渲染renderChildren时没有显示下来菜单,  Menu组件中除了可以是MenuItem,还可以有SubMenu
+```
+
+
+
+#### 3. 水平菜单修改hover显示隐藏 16步开始
+
+通过menu中的mode选项,是水平还是垂直, subMenu就可以进行判断。所以只能通过context上下文拿到menu中的mode
+
+- 增加menu中的IMenuContext接口属性定义
+
+```tsx
+// 通过使用context, 将父组件传递给子组件的属性的接口定义
+interface IMenuContext {
+  activeIndex: number,
+  onSelect?: SelectCallback,
+  mode?: MenuMode // 可选的
+}
+```
+
+- Menu组件中加入mode到menuContext中
+
+```tsx
+// 创建context需要的值
+const contextValue: IMenuContext = {
+    activeIndex: currentActive ? currentActive : 0,
+    onSelect: handleSelect,
+    mode,
+}
+```
+
+- subMenu组件中 可以通过这个mode来判断水平还是垂直模式, 水平的就是hover
+- 水平是hover触发显示隐藏, 垂直是点击
+
+```tsx
+import React, { useContext, useState, FunctionComponentElement } from 'react'
+import classNames from 'classnames'
+import { MenuContext } from './menu'   // 父组件的上下文
+// 7. 引入MenuItem的接口props类型定义
+import { MenuItemProps } from './menuItem'
+
+// 1. 定义自身组件的属性以及类型
+export interface SubMenuProps {
+  index?: number,
+  title: string,
+  className?: string
+}
+
+const SubMenu: React.FC<SubMenuProps> = (props) => {
+  // 2. 解构所有接收的参数
+  const { index, title, className, children } = props
+  // 3. 引入上下文,拿到父组件中的值
+  const context = useContext(MenuContext)
+  // 12. 添加submenu是否打开的状态, 通过事件修改状态, 影响下拉菜单的展开或隐藏
+  const [menuOpen, setMenuOpen] = useState(false)
+  // 4. 整合class样式
+  const classes = classNames('menu-item submenu-item', className, {
+    'is-active': context.activeIndex === index
+  })
+
+  // 13. 添加submenu的class, 这里的e的类型是React.MouseEvent
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setMenuOpen(!menuOpen)
+  }
+
+  // 18. 让打开更加平滑
+  let timer: any
+
+  // 17. 处理鼠标hover事件的函数 处理mouseEnter, mouseLeave这两个事件
+  /**
+   * 
+   * @param e 事件
+   * @param toggle: 让下拉菜单是打开还是关闭 
+   */
+  const handleMouse = (e: React.MouseEvent, toggle: boolean) => {
+    clearTimeout(timer)
+    e.preventDefault()
+    timer = setTimeout(() => {
+      setMenuOpen(toggle)
+    }, 300)
+  }
+
+  // 19. 不能把handleClick和handleMouse一股脑的直接传递给subMenu的元素上, clickEvents 给title对应的div; hoverEvents给外层的li
+  const clickEvents = context.mode === 'vertical' ? {
+    onClick: handleClick
+  } : {}
+  // 20. hover事件,不是垂直就是水平模式时
+  const hoverEvents = context.mode !== 'vertical' ? {
+    onMouseEnter: (e: React.MouseEvent) => handleMouse(e, true),
+    onMouseLeave: (e: React.MouseEvent) => handleMouse(e, false)
+  } : {}
+
+  // 6. 处理渲染的下拉内容
+  const renderChildren = () => {
+    // 14. 增加下拉菜单显示与隐藏的类, 不能写死ux-submenu, 根据状态值的true or false 添加open状态
+    const subMenuClasses = classNames('ux-submenu', {
+      'menu-opened': menuOpen
+    })
+    const childrenComponent = React.Children.map(children, (child, i) => {
+      const childElement = child as FunctionComponentElement<MenuItemProps>
+      if (childElement.type.displayName === 'MenuItem') {
+        return child
+      } else {
+        console.error('Warning: Menu has a child which is not a MenuItem component')
+      }
+    })
+    return (
+      // 15. 替换掉写死的 ux-submenu => subMenuClasses
+      <ul className={subMenuClasses}>
+        {childrenComponent}
+      </ul>
+    )
+  }
+
+  // 5. 渲染DOM (li包裹着div作为标题)
+  return (
+    // 21. hover事件传递给外层
+    <li key={index} className={classes} {...hoverEvents}>
+      {/* 16. div这个地方添加click事件, 触发显示或隐藏的事件 onClick={handleClick}*/}
+      {/* 22. click事件传递给标题 */}
+      <div className="submenu-title" {...clickEvents}>
+        {title}
+      </div>
+      {/* 下来菜单内容,依然不能使用children直接渲染submenu中的内容,因为依然要限制只有MenuItem, 使用renderChildren函数 */}
+      {/* 8. 将处理好的children加入到组件中 */}
+      {renderChildren()}
+    </li>
+  )
+}
+
+// 9. 增加displayName
+SubMenu.displayName = "SubMenu"
+export default SubMenu
+
+// 10. 到App进行编写测试代码
+// 11. 修改menu组件, 发现渲染renderChildren时没有显示下来菜单,  Menu组件中除了可以是MenuItem,还可以有SubMenu
+```
+
+
+
+改进:  mode=垂直时, 下拉的menuItem点击事件不能被触发。subMenu的renderChildren时, 渲染childElement的时候需要把index传递进去, 但是被外层的index占用了。外层就是主menu的index占用了。
+
+
+
+## SVG
+
+react-fontawesome

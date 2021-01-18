@@ -26,6 +26,35 @@
         $menu-item-active-color;
     }
   }
+  //
+  > .submenu-item {
+    position: relative;
+    .submenu-title {
+      display: flex;
+      align-items: center;
+    }
+  }
+  .ux-submenu {
+    display: none;
+    flex-direction: column;
+    list-style: none;
+    padding-left: 0;
+    white-space: nowrap;
+    > .menu-item {
+      padding: $menu-item-padding-y $menu-item-padding-x;
+      cursor: pointer;
+      transition: $menu-transition;
+      color: $body-color;
+      &.is-active,
+      &:hover {
+        color: $menu-item-active-color !important;
+      }
+    }
+  }
+  // 增加显示的类
+  .ux-submenu.menu-opened {
+    display: block;
+  }
 }
 
 .menu-vertical {
@@ -39,6 +68,35 @@
     &:hover {
       border-bottom: 0;
       border-left: $menu-item-active-border-width solid $menu-item-active-color;
+    }
+  }
+}
+
+// 水平
+.menu-horizontal {
+  flex-direction: row;
+  border-bottom: $menu-border-width solid $menu-border-color;
+  > .menu-item {
+    border-bottom: $menu-item-active-border-width solid transparent;
+    &.is-active {
+      border-bottom: $menu-item-active-border-width solid
+        $menu-item-active-color;
+    }
+  }
+  .ux-submenu {
+    position: absolute;
+    background: $white;
+    z-index: 1;
+    top: 100%;
+    left: 0;
+    border: $menu-border-width solid $menu-border-color;
+    > .menu-item {
+      border-left: $menu-item-active-border-width solid transparent;
+      &.is-active {
+        border-bottom: 0;
+        border-left: $menu-item-active-border-width solid
+          $menu-item-active-color;
+      }
     }
   }
 }
